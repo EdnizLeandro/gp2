@@ -1,0 +1,84 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans, DBSCAN
+from sklearn.preprocessing import StandardScaler
+
+# Ler dados do arquivo Parquet
+file_path = r'C:\Users\Usuario\Desktop\gp2\data\price_cars500k.parquet'
+df = pd.read_parquet(file_path)
+
+# Verificar se há colunas numéricas no DataFrame
+numeric_columns = df.select_dtypes(include='number').columns
+
+# Verificar se há colunas suficientes para realizar o clustering
+if len(numeric_columns) < 2:
+    st.warning('Não há colunas numéricas suficientes para realizar o clustering. Selecione pelo menos duas colunas numéricas.')
+else:
+    # Selecionar as colunas relevantes
+    selected_columns = st.multiselect("Selecione as colunas para clustering", numeric_columns)
+
+    if len(selected_columns) < 2:
+        st.warning('Selecione pelo menos duas colunas numéricas para realizar o clustering.')
+    else:
+        # Normalizar os dados apenas se houver colunas numéricas
+        scaler = StandardScaler()
+        X = df[selected_columns]
+        X_scaled = scaler.fit_transform(X)
+
+        # Aplicar KMeans para inicialização dos centróides
+        kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+        kmeans_labels = kmeans.fit_predict(X_scaled)
+
+        # Usar as coordenadas dos centróides do KMeans como sementes para o DBSCAN
+        dbscan = DBSCAN(eps=0.5, min_samples=5)
+        dbscan_labels = dbscan.fit_predict(kmeans.cluster_centers_)
+
+        # Configurar a página do Streamlit
+        st.title('Clustering com KMeans e DBSCAN')
+        st.header('Visualização dos Resultados')
+
+        # Calcular limites para os eixos X e Y
+        x_min, x_max = X[selected_columns[0]].min(), X[selected_columns[0]].max()
+        y_min, y_max = X[selected_columns[1]].min(), X[selected_columns[1]].max()
+
+        # Adicionar uma margem aos limites para melhor visualização
+        x_margin = (x_max - x_min) * 0.05
+        y_margin = (y_max - y_min) * 0.05
+
+        # Gráfico KMeans
+        st.subheader('KMeans Clustering')
+        fig_kmeans, ax_kmeans = plt.subplots()
+        ax_kmeans.scatter(X[selected_columns[0]], X[selected_columns[1]], c=kmeans_labels, cmap='viridis', edgecolors='k')
+        ax_kmeans.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], c='red', marker='X', s=200, label='Centroids')
+        ax_kmeans.set_title('KMeans Clustering')
+        ax_kmeans.set_xlabel(selected_columns[0])
+        ax_kmeans.set_ylabel(selected_columns[1])
+        ax_kmeans.set_xlim(x_min - x_margin, x_max + x_margin)
+        ax_kmeans.set_ylim(y_min - y_margin, y_max + y_margin)
+        ax_kmeans.legend(loc='upper right')  # Ajuste a localização conforme necessário
+        st.pyplot(fig_kmeans)
+
+        # Gráfico DBSCAN
+        if len(set(dbscan_labels)) > 1:  # Verificar se há mais de um cluster
+            st.subheader('DBSCAN Clustering (based on KMeans centroids)')
+            fig_dbscan, ax_dbscan = plt.subplots()
+            colors = plt.cm.viridis((dbscan_labels - dbscan_labels.min()) / (dbscan_labels.max() - dbscan_labels.min()))
+            ax_dbscan.scatter(X[selected_columns[0]], X[selected_columns[1]], c=colors, edgecolors='k')
+            ax_dbscan.set_title('DBSCAN Clustering (based on KMeans centroids)')
+            ax_dbscan.set_xlabel(selected_columns[0])
+            ax_dbscan.set_ylabel(selected_columns[1])
+            ax_dbscan.set_xlim(x_min - x_margin, x_max + x_margin)
+            ax_dbscan.set_ylim(y_min - y_margin, y_max + y_margin)
+            st.pyplot(fig_dbscan)
+        else:
+            st.warning('Feito.')
+
+        # Informações adicionais
+        st.subheader('Informações Adicionais')
+        st.write(f"**Número de Colunas Selecionadas para Clustering:** {len(selected_columns)}")
+        st.write(f"**Colunas Selecionadas:** {', '.join(selected_columns)}")
+        st.write(f"**Número de Clusters no DBSCAN:** {len(set(dbscan_labels))}")
+        st.write(f"**Número de Clusters no KMeans:** {len(set(kmeans_labels))}")
+        st.write(f"**Centróides do KMeans:**")
+        st.dataframe(pd.DataFrame(kmeans.cluster_centers_, columns=selected_columns))
